@@ -6,22 +6,29 @@ const crypto = require("crypto");
 const { execSync, execFile } = require("child_process");
 const Fastify = require("fastify");
 const cors = require("@fastify/cors");
+const { exec } = require("child_process");
 
 // -----------------------
 // Certificados (mkcert)
 // -----------------------
-const CERT_DIR = path.resolve(__dirname, "certs");
-const CERT_FILE = path.join(CERT_DIR, "localhost+1.pem");
-const KEY_FILE = path.join(CERT_DIR, "localhost+1-key.pem");
-const MKCERT_PATH = path.resolve(__dirname, "mkcert.exe"); // ajusta si es necesario
+const CERT_DIR = path.join(process.cwd(), "certs")
+const CERT_FILE = path.join(CERT_DIR, "localhost.pem")
+const KEY_FILE = path.join(CERT_DIR, "localhost-key.pem")
+const MKCERT_PATH = path.join(process.cwd(), "mkcert.exe")
 
 if (!fs.existsSync(CERT_FILE) || !fs.existsSync(KEY_FILE)) {
-  console.log("Generando certificados HTTPS con mkcert...");
-  if (!fs.existsSync(CERT_DIR)) fs.mkdirSync(CERT_DIR, { recursive: true });
+
+  console.log("Instalando CA local de mkcert...")
+  execSync(`"${MKCERT_PATH}" -install`, { stdio: "ignore" })
+
+  console.log("Generando certificados HTTPS con mkcert...")
+
+  if (!fs.existsSync(CERT_DIR)) fs.mkdirSync(CERT_DIR, { recursive: true })
+
   execSync(
-    `${MKCERT_PATH} -cert-file "${CERT_FILE}" -key-file "${KEY_FILE}" localhost 127.0.0.1 ::1`,
+    `"${MKCERT_PATH}" -cert-file "${CERT_FILE}" -key-file "${KEY_FILE}" localhost 127.0.0.1 ::1`,
     { stdio: "inherit" }
-  );
+  )
 }
 
 const key = fs.readFileSync(KEY_FILE);
@@ -72,8 +79,7 @@ function setSelectedPrinterInConfig(printerNameOrNull) {
 // -----------------------
 // Helper PowerShell (Winspool WritePrinter)
 // -----------------------
-const RAW_PRINT_PS1 = path.join(__dirname, "raw-print.ps1");
-
+const RAW_PRINT_PS1 = path.join(process.cwd(), "raw-print.ps1");
 const RAW_PRINT_PS1_CONTENT = String.raw`
 param(
   [Parameter(Mandatory=$true)][string]$PrinterName,
@@ -186,6 +192,7 @@ $bytes = [System.IO.File]::ReadAllBytes($Path)
 $jobId = [RawPrinterHelper]::SendBytes($PrinterName, $bytes)
 Write-Output $jobId
 `;
+
 
 function ensureRawPrintScript() {
   const needsWrite =
@@ -450,10 +457,10 @@ app.post("/print", async (req, reply) => {
 // -----------------------
 // Escuchar (solo local por defecto)
 // -----------------------
-app.listen({ port: 9100, host: "127.0.0.1" }, async (err) => {
+app.listen({ port: 58123, host: "127.0.0.1" }, async (err) => {
   if (err) throw err;
-  console.log("Servidor de impresión HTTPS: https://localhost:9100");
-  console.log("UI para elegir impresora: https://localhost:9100/ui");
+  console.log("Servidor de impresión HTTPS: https://localhost:58123");
+  console.log("UI para elegir impresora: https://localhost:58123/ui");
   try {
     console.log("Impresora predeterminada (Windows):", await getDefaultPrinterName());
     console.log("Impresora seleccionada:", getSelectedPrinterFromConfig() || "(ninguna)");
@@ -461,3 +468,20 @@ app.listen({ port: 9100, host: "127.0.0.1" }, async (err) => {
     console.log("Impresora predeterminada:", e.message);
   }
 });
+
+
+console.log("")
+console.log("======================================")
+console.log("  SERVIDOR DE IMPRESIÓN - LAPTOP OUTLET")
+console.log("======================================")
+console.log("")
+console.log("⚠️  NO CERRAR ESTA VENTANA")
+console.log("")
+console.log("Si se cierra, las facturas no imprimirán.")
+console.log("")
+console.log("Servidor: https://localhost:58123")
+console.log("")
+
+setTimeout(() => {
+  exec(`start "" "https://localhost:58123/ui"`);
+}, 1000);
