@@ -1,22 +1,22 @@
 {
   "name": "print-server",
   "version": "1.0.0",
-  "description": "Servidor HTTPS local para imprimir recibos ESC/POS (RAW) en Windows",
+  "description": "Servidor HTTPS local para imprimir recibos ESC/POS y etiquetas TSPL en Windows",
   "main": "index.js",
   "type": "commonjs",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "label-start": "node label-print.js",
+
+    "build:receipt": "pkg index.js --targets node18-win-x64 --output dist/printbridge.exe",
+    "build:labels": "pkg label-print.js --targets node18-win-x64 --output dist/labelbridge.exe",
+    "build:copy-mkcert": "node -e \"const fs=require('fs'); fs.mkdirSync('dist',{recursive:true}); fs.copyFileSync('mkcert.exe','dist/mkcert.exe')\"",
+    "build": "npm run build:receipt && npm run build:labels && npm run build:copy-mkcert"
   },
   "dependencies": {
-    "@fastify/cors": "^11.2.0",
     "fastify": "^5.8.5"
   },
-  "bin": "index.js",
-  "pkg": {
-    "assets": [
-      "mkcert.exe",
-      "raw-print.ps1",
-      "certs/**/*"
-    ]
+  "devDependencies": {
+    "@yao-pkg/pkg": "^6.0.0"
   }
 }
