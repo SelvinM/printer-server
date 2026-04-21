@@ -9,7 +9,7 @@
   },
   "dependencies": {
     "@fastify/cors": "^8.5.0",
-    "fastify": "4.25"
+    "fastify": "^5.8.5"
   },
   "bin": "index.js",
   "pkg": {
