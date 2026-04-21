@@ -5,30 +5,28 @@ const os = require("os");
 const crypto = require("crypto");
 const { execSync, execFile } = require("child_process");
 const Fastify = require("fastify");
-const cors = require("@fastify/cors");
 const { exec } = require("child_process");
 
 // -----------------------
 // Certificados (mkcert)
 // -----------------------
-const CERT_DIR = path.join(process.cwd(), "certs")
-const CERT_FILE = path.join(CERT_DIR, "localhost.pem")
-const KEY_FILE = path.join(CERT_DIR, "localhost-key.pem")
-const MKCERT_PATH = path.join(process.cwd(), "mkcert.exe")
+const CERT_DIR = path.join(process.cwd(), "certs");
+const CERT_FILE = path.join(CERT_DIR, "localhost.pem");
+const KEY_FILE = path.join(CERT_DIR, "localhost-key.pem");
+const MKCERT_PATH = path.join(process.cwd(), "mkcert.exe");
 
 if (!fs.existsSync(CERT_FILE) || !fs.existsSync(KEY_FILE)) {
+  console.log("Instalando CA local de mkcert...");
+  execSync(`"${MKCERT_PATH}" -install`, { stdio: "ignore" });
 
-  console.log("Instalando CA local de mkcert...")
-  execSync(`"${MKCERT_PATH}" -install`, { stdio: "ignore" })
+  console.log("Generando certificados HTTPS con mkcert...");
 
-  console.log("Generando certificados HTTPS con mkcert...")
-
-  if (!fs.existsSync(CERT_DIR)) fs.mkdirSync(CERT_DIR, { recursive: true })
+  if (!fs.existsSync(CERT_DIR)) fs.mkdirSync(CERT_DIR, { recursive: true });
 
   execSync(
     `"${MKCERT_PATH}" -cert-file "${CERT_FILE}" -key-file "${KEY_FILE}" localhost 127.0.0.1 ::1`,
     { stdio: "inherit" }
-  )
+  );
 }
 
 const key = fs.readFileSync(KEY_FILE);
@@ -41,14 +39,28 @@ const app = Fastify({
   https: { key, cert },
   bodyLimit: 2 * 1024 * 1024,
 });
-app.register(cors, { origin: "*" });
+
+// -----------------------
+// CORS manual
+// Evita depender de @fastify/cors y sus versiones
+// -----------------------
+app.addHook("onRequest", (req, reply, done) => {
+  reply.header("Access-Control-Allow-Origin", "*");
+  reply.header("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+  reply.header("Access-Control-Allow-Headers", "Content-Type");
+
+  if (req.method === "OPTIONS") {
+    reply.code(204).send();
+    return;
+  }
+
+  done();
+});
 
 // -----------------------
 // Config (persistencia)
 // -----------------------
-const BASE_DIR = process.pkg
-  ? path.dirname(process.execPath)
-  : __dirname;
+const BASE_DIR = process.pkg ? path.dirname(process.execPath) : __dirname;
 
 const CONFIG_PATH = path.join(BASE_DIR, "printer-config.json");
 
@@ -68,6 +80,7 @@ function saveConfig(cfg) {
 
 function getSelectedPrinterFromConfig() {
   const cfg = loadConfig();
+
   return typeof cfg.selectedPrinter === "string" && cfg.selectedPrinter.trim()
     ? cfg.selectedPrinter.trim()
     : null;
@@ -75,8 +88,10 @@ function getSelectedPrinterFromConfig() {
 
 function setSelectedPrinterInConfig(printerNameOrNull) {
   const cfg = loadConfig();
+
   if (printerNameOrNull) cfg.selectedPrinter = printerNameOrNull;
   else delete cfg.selectedPrinter;
+
   saveConfig(cfg);
 }
 
@@ -84,6 +99,7 @@ function setSelectedPrinterInConfig(printerNameOrNull) {
 // Helper PowerShell (Winspool WritePrinter)
 // -----------------------
 const RAW_PRINT_PS1 = path.join(process.cwd(), "raw-print.ps1");
+
 const RAW_PRINT_PS1_CONTENT = String.raw`
 param(
   [Parameter(Mandatory=$true)][string]$PrinterName,
@@ -197,14 +213,16 @@ $jobId = [RawPrinterHelper]::SendBytes($PrinterName, $bytes)
 Write-Output $jobId
 `;
 
-
 function ensureRawPrintScript() {
   const needsWrite =
     !fs.existsSync(RAW_PRINT_PS1) ||
     fs.readFileSync(RAW_PRINT_PS1, "utf8") !== RAW_PRINT_PS1_CONTENT;
 
-  if (needsWrite) fs.writeFileSync(RAW_PRINT_PS1, RAW_PRINT_PS1_CONTENT, "utf8");
+  if (needsWrite) {
+    fs.writeFileSync(RAW_PRINT_PS1, RAW_PRINT_PS1_CONTENT, "utf8");
+  }
 }
+
 ensureRawPrintScript();
 
 function runPowerShell(args) {
@@ -215,9 +233,11 @@ function runPowerShell(args) {
       { windowsHide: true, maxBuffer: 10 * 1024 * 1024 },
       (err, stdout, stderr) => {
         if (err) {
-          const msg = (stderr && stderr.trim()) || err.message || "PowerShell falló";
+          const msg =
+            (stderr && stderr.trim()) || err.message || "PowerShell falló";
           return reject(new Error(msg));
         }
+
         resolve((stdout || "").trim());
       }
     );
@@ -230,25 +250,38 @@ function runPowerShell(args) {
 async function listPrinters() {
   const cmd =
     "Get-CimInstance Win32_Printer | Select-Object Name, Default | ConvertTo-Json -Compress";
+
   const out = await runPowerShell(["-Command", cmd]);
   const parsed = out ? JSON.parse(out) : [];
   const list = Array.isArray(parsed) ? parsed : [parsed];
+
   const printers = list.map((p) => p.Name).filter(Boolean);
   const defObj = list.find((p) => p.Default) || null;
-  return { printers, defaultPrinter: defObj ? defObj.Name : null };
+
+  return {
+    printers,
+    defaultPrinter: defObj ? defObj.Name : null,
+  };
 }
 
 async function getDefaultPrinterName() {
   const cmd =
     '(Get-CimInstance Win32_Printer | Where-Object { $_.Default -eq $true } | Select-Object -First 1 -ExpandProperty Name)';
+
   const name = await runPowerShell(["-Command", cmd]);
-  if (!name) throw new Error("No hay impresora predeterminada. Configúrala en Windows.");
+
+  if (!name) {
+    throw new Error("No hay impresora predeterminada. Configúrala en Windows.");
+  }
+
   return name;
 }
 
 async function resolveTargetPrinter() {
   const selected = getSelectedPrinterFromConfig();
+
   if (selected) return selected;
+
   return await getDefaultPrinterName();
 }
 
@@ -259,9 +292,12 @@ function bufferFromBase64(dataB64) {
   if (typeof dataB64 !== "string" || !dataB64.trim()) {
     throw new Error("Datos inválidos: se esperaba un string en base64.");
   }
+
   let b64 = dataB64.trim();
   const m = b64.match(/^data:.*;base64,(.*)$/i);
+
   if (m) b64 = m[1];
+
   return Buffer.from(b64, "base64");
 }
 
@@ -342,27 +378,36 @@ app.get("/ui", async (_req, reply) => {
 
   $('saveBtn').addEventListener('click', async () => {
     msg('', '');
+
     const printerName = $('printerSelect').value;
+
     const r = await fetch('/api/selected-printer', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ printerName })
     });
+
     const j = await r.json();
+
     if (!r.ok) return msg(j.error || 'No se pudo guardar.', 'err');
+
     msg('Guardado.', 'ok');
     await refresh();
   });
 
   $('clearBtn').addEventListener('click', async () => {
     msg('', '');
+
     const r = await fetch('/api/selected-printer', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ printerName: null })
     });
+
     const j = await r.json();
+
     if (!r.ok) return msg(j.error || 'No se pudo actualizar.', 'err');
+
     msg('Ahora se usa la predeterminada de Windows.', 'ok');
     await refresh();
   });
@@ -371,6 +416,7 @@ app.get("/ui", async (_req, reply) => {
 </script>
 </body>
 </html>`;
+
   reply.type("text/html; charset=utf-8").send(html);
 });
 
@@ -380,14 +426,22 @@ app.get("/ui", async (_req, reply) => {
 app.get("/api/printers", async (_req, reply) => {
   try {
     const { printers, defaultPrinter } = await listPrinters();
-    reply.send({ printers, default: defaultPrinter });
+
+    reply.send({
+      printers,
+      default: defaultPrinter,
+    });
   } catch (e) {
-    reply.code(500).send({ error: "No se pudieron listar las impresoras." });
+    reply.code(500).send({
+      error: "No se pudieron listar las impresoras.",
+    });
   }
 });
 
 app.get("/api/selected-printer", async (_req, reply) => {
-  reply.send({ selectedPrinter: getSelectedPrinterFromConfig() });
+  reply.send({
+    selectedPrinter: getSelectedPrinterFromConfig(),
+  });
 });
 
 app.post("/api/selected-printer", async (req, reply) => {
@@ -396,21 +450,39 @@ app.post("/api/selected-printer", async (req, reply) => {
 
     if (printerName === null) {
       setSelectedPrinterInConfig(null);
-      return reply.send({ success: true, selectedPrinter: null });
+
+      return reply.send({
+        success: true,
+        selectedPrinter: null,
+      });
     }
 
     const name = String(printerName || "").trim();
-    if (!name) return reply.code(400).send({ error: "Debes indicar una impresora (o null para limpiar)." });
+
+    if (!name) {
+      return reply.code(400).send({
+        error: "Debes indicar una impresora (o null para limpiar).",
+      });
+    }
 
     const { printers } = await listPrinters();
+
     if (!printers.includes(name)) {
-      return reply.code(400).send({ error: "Esa impresora no existe en esta PC." });
+      return reply.code(400).send({
+        error: "Esa impresora no existe en esta PC.",
+      });
     }
 
     setSelectedPrinterInConfig(name);
-    reply.send({ success: true, selectedPrinter: name });
+
+    reply.send({
+      success: true,
+      selectedPrinter: name,
+    });
   } catch (e) {
-    reply.code(500).send({ error: "No se pudo guardar la impresora seleccionada." });
+    reply.code(500).send({
+      error: "No se pudo guardar la impresora seleccionada.",
+    });
   }
 });
 
@@ -419,17 +491,26 @@ app.post("/api/selected-printer", async (req, reply) => {
 // -----------------------
 app.post("/print", async (req, reply) => {
   let tmpPath = null;
+
   try {
     const { data } = req.body || {};
-    if (!data) return reply.code(400).send({ error: "No se proporcionaron datos para imprimir." });
+
+    if (!data) {
+      return reply.code(400).send({
+        error: "No se proporcionaron datos para imprimir.",
+      });
+    }
 
     const target = await resolveTargetPrinter();
     const buf = bufferFromBase64(data);
 
     tmpPath = path.join(
       os.tmpdir(),
-      `recibo-${crypto.randomUUID?.() || crypto.randomBytes(16).toString("hex")}.bin`
+      `recibo-${
+        crypto.randomUUID?.() || crypto.randomBytes(16).toString("hex")
+      }.bin`
     );
+
     fs.writeFileSync(tmpPath, buf);
 
     const jobIdStr = await runPowerShell([
@@ -442,6 +523,7 @@ app.post("/print", async (req, reply) => {
     ]);
 
     const jobId = Number(jobIdStr);
+
     reply.send({
       success: true,
       printer: target,
@@ -450,42 +532,62 @@ app.post("/print", async (req, reply) => {
     });
   } catch (err) {
     console.error("Error de impresión:", err);
-    reply.code(500).send({ error: "Error al imprimir. Revisa la impresora y el controlador." });
+
+    reply.code(500).send({
+      error: "Error al imprimir. Revisa la impresora y el controlador.",
+    });
   } finally {
     if (tmpPath) {
-      try { fs.unlinkSync(tmpPath); } catch {}
+      try {
+        fs.unlinkSync(tmpPath);
+      } catch {}
     }
   }
 });
 
 // -----------------------
-// Escuchar (solo local por defecto)
+// Escuchar
 // -----------------------
-app.listen({ port: 58123, host: "127.0.0.1" }, async (err) => {
-  if (err) throw err;
-  console.log("Servidor de impresión HTTPS: https://localhost:58123");
-  console.log("UI para elegir impresora: https://localhost:58123/ui");
+async function start() {
   try {
-    console.log("Impresora predeterminada (Windows):", await getDefaultPrinterName());
-    console.log("Impresora seleccionada:", getSelectedPrinterFromConfig() || "(ninguna)");
-  } catch (e) {
-    console.log("Impresora predeterminada:", e.message);
+    await app.listen({ port: 58123, host: "127.0.0.1" });
+
+    console.log("Servidor de impresión HTTPS: https://localhost:58123");
+    console.log("UI para elegir impresora: https://localhost:58123/ui");
+
+    try {
+      console.log(
+        "Impresora predeterminada (Windows):",
+        await getDefaultPrinterName()
+      );
+
+      console.log(
+        "Impresora seleccionada:",
+        getSelectedPrinterFromConfig() || "(ninguna)"
+      );
+    } catch (e) {
+      console.log("Impresora predeterminada:", e.message);
+    }
+  } catch (err) {
+    console.error("Error iniciando servidor:", err);
+    process.exit(1);
   }
-});
+}
 
-
-console.log("")
-console.log("======================================")
-console.log("  SERVIDOR DE IMPRESIÓN - LAPTOP OUTLET")
-console.log("======================================")
-console.log("")
-console.log("⚠️  NO CERRAR ESTA VENTANA")
-console.log("")
-console.log("Si se cierra, las facturas no imprimirán.")
-console.log("")
-console.log("Servidor: https://localhost:58123")
-console.log("")
+console.log("");
+console.log("======================================");
+console.log("  SERVIDOR DE IMPRESIÓN - LAPTOP OUTLET");
+console.log("======================================");
+console.log("");
+console.log("⚠️  NO CERRAR ESTA VENTANA");
+console.log("");
+console.log("Si se cierra, las facturas no imprimirán.");
+console.log("");
+console.log("Servidor: https://localhost:58123");
+console.log("");
 
 setTimeout(() => {
   exec(`start "" "https://localhost:58123/ui"`);
 }, 1000);
+
+start();
