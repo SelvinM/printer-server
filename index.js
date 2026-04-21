@@ -46,7 +46,11 @@ app.register(cors, { origin: "*" });
 // -----------------------
 // Config (persistencia)
 // -----------------------
-const CONFIG_PATH = path.join(__dirname, "printer-config.json");
+const BASE_DIR = process.pkg
+  ? path.dirname(process.execPath)
+  : __dirname;
+
+const CONFIG_PATH = path.join(BASE_DIR, "printer-config.json");
 
 function loadConfig() {
   try {

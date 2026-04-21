@@ -1,3 +1,27 @@
-node_modules
+node_modules/
+certs/
 
-certs
+printer-config.json
+label-printer-config.json
+receipt-printer-config.json
+
+raw-print.ps1
+raw-print-labels.ps1
+raw-print-receipts.ps1
+
+# Built app executables
+printbridge.exe
+labelbridge.exe
+receiptbridge.exe
+
+dist/
+build/
+out/
+
+*.log
+.env
+.env.local
+
+.DS_Store
+Thumbs.db
+.vscode/
