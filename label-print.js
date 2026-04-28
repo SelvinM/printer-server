@@ -355,16 +355,16 @@ function getBarcodePayload(label) {
   if (label.kind === "component") {
     const componentId = compactId(label.componentCode, ["C"]);
     const serialId = label.serialNumber
-      ? compactId(label.serialNumber, ["SN", "S"])
+      ? compactId(label.serialNumber, ["U"])
       : "";
 
     return serialId ? `C|${componentId}|${serialId}` : `C|${componentId}`;
   }
 
   if (label.kind === "sku") {
-    const skuId = compactId(label.sku, ["SKU", "S"]);
+    const skuId = compactId(label.sku, ["SKU"]);
     const serialId = label.serialNumber
-      ? compactId(label.serialNumber, ["SN", "S"])
+      ? compactId(label.serialNumber, ["U"])
       : "";
 
     return serialId ? `S|${skuId}|${serialId}` : `S|${skuId}`;
@@ -482,7 +482,7 @@ class TscLabelBuilder {
       );
 
       const serialText = label.serialNumber
-        ? truncateText(withPrefix(label.serialNumber, "SN"), 18)
+        ? truncateText(withPrefix(label.serialNumber, "U"), 18)
         : null;
 
       this.text(4, 2, "1", componentText);
@@ -499,7 +499,7 @@ class TscLabelBuilder {
       const skuText = truncateText(withPrefix(label.sku, "SKU"), 28);
 
       const serialText = label.serialNumber
-        ? truncateText(withPrefix(label.serialNumber, "SN"), 28)
+        ? truncateText(withPrefix(label.serialNumber, "U"), 28)
         : null;
 
       this.text(12, 8, "3", skuText);
