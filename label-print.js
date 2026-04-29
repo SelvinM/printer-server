@@ -33,7 +33,7 @@ if (!fs.existsSync(CERT_FILE) || !fs.existsSync(KEY_FILE)) {
 
   execSync(
     `"${MKCERT_PATH}" -cert-file "${CERT_FILE}" -key-file "${KEY_FILE}" localhost 127.0.0.1 ::1`,
-    { stdio: "inherit" }
+    { stdio: "inherit" },
   );
 }
 
@@ -244,7 +244,7 @@ function runPowerShell(args) {
         }
 
         resolve((stdout || "").trim());
-      }
+      },
     );
   });
 }
@@ -271,7 +271,7 @@ async function listPrinters() {
 
 async function getDefaultPrinterName() {
   const cmd =
-    '(Get-CimInstance Win32_Printer | Where-Object { $_.Default -eq $true } | Select-Object -First 1 -ExpandProperty Name)';
+    "(Get-CimInstance Win32_Printer | Where-Object { $_.Default -eq $true } | Select-Object -First 1 -ExpandProperty Name)";
 
   const name = await runPowerShell(["-Command", cmd]);
 
@@ -317,7 +317,7 @@ function cleanTsplValue(value) {
     .trim();
 }
 
-function compactId(value, prefixes = []) {
+function stripKnownPrefix(value, prefixes = []) {
   const v = cleanTsplValue(value);
 
   for (const p of prefixes) {
@@ -326,6 +326,32 @@ function compactId(value, prefixes = []) {
   }
 
   return v;
+}
+
+function bigintToBase36(value) {
+  if (value === 0n) return "0";
+
+  const alphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  let n = value;
+  let out = "";
+
+  while (n > 0n) {
+    const digit = Number(n % 36n);
+    out = alphabet[digit] + out;
+    n = n / 36n;
+  }
+
+  return out;
+}
+
+function compactId(value, prefixes = []) {
+  const id = stripKnownPrefix(value, prefixes);
+
+  if (/^\d+$/.test(id)) {
+    return bigintToBase36(BigInt(id));
+  }
+
+  return id.toUpperCase();
 }
 
 function withPrefix(value, prefix) {
@@ -440,7 +466,8 @@ class TscLabelBuilder {
 
     this.cmd("GAP 2 mm,0");
     this.cmd("DIRECTION 1");
-    this.cmd("REFERENCE 0,0");
+    this.cmd("REFERENCE 24,18");
+    this.cmd("SET RIBBON OFF");
     this.cmd("SPEED 3");
     this.cmd("DENSITY 8");
     this.cmd("CLS");
@@ -449,8 +476,8 @@ class TscLabelBuilder {
   text(x, y, font, value, xMul = 1, yMul = 1) {
     this.cmd(
       `TEXT ${x},${y},${this.quote(font)},0,${xMul},${yMul},${this.quote(
-        value
-      )}`
+        value,
+      )}`,
     );
   }
 
@@ -461,8 +488,8 @@ class TscLabelBuilder {
 
     this.cmd(
       `BARCODE ${x},${y},"128",${height},${readable},0,${narrow},${wide},${this.quote(
-        payload
-      )}`
+        payload,
+      )}`,
     );
   }
 
@@ -478,7 +505,7 @@ class TscLabelBuilder {
     if (label.kind === "component") {
       const componentText = truncateText(
         withPrefix(label.componentCode, "C"),
-        18
+        18,
       );
 
       const serialText = label.serialNumber
@@ -508,14 +535,14 @@ class TscLabelBuilder {
         this.text(12, 42, "2", serialText);
         this.code128(12, 76, 88, payload, { narrow: 2, wide: 4 });
       } else {
-        this.code128(12, 62, 104, payload, { narrow: 2, wide: 4 });
+        this.code128(12, 62, 104, payload, { narrow: 3, wide: 6 });
       }
     }
 
     if (label.kind === "warranty") {
       const warrantyText = truncateText(
         withPrefix(label.warrantyNumber, "W"),
-        16
+        16,
       );
 
       const employeeText = truncateText(withPrefix(label.employeeCode, "E"), 8);
@@ -539,7 +566,7 @@ class TscLabelBuilder {
 
     if (sizes.size > 1) {
       throw new Error(
-        "No mezcles etiquetas 1x0.5 y 2x1 en el mismo lote. La impresora solo puede tener un rollo físico cargado a la vez."
+        "No mezcles etiquetas 1x0.5 y 2x1 en el mismo lote. La impresora solo puede tener un rollo físico cargado a la vez.",
       );
     }
 
@@ -820,17 +847,19 @@ async function start() {
 
     console.log(`Servidor de etiquetas HTTPS: https://localhost:${PORT}`);
     console.log(`UI para elegir impresora: https://localhost:${PORT}/ui`);
-    console.log(`Endpoint etiquetas: POST https://localhost:${PORT}/print-labels`);
+    console.log(
+      `Endpoint etiquetas: POST https://localhost:${PORT}/print-labels`,
+    );
 
     try {
       console.log(
         "Impresora predeterminada (Windows):",
-        await getDefaultPrinterName()
+        await getDefaultPrinterName(),
       );
 
       console.log(
         "Impresora de etiquetas seleccionada:",
-        getSelectedPrinterFromConfig() || "(ninguna)"
+        getSelectedPrinterFromConfig() || "(ninguna)",
       );
     } catch (e) {
       console.log("Impresora predeterminada:", e.message);
