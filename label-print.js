@@ -312,7 +312,7 @@ function cleanTsplValue(value) {
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/ñ/gi, "n")
-    .replace(/[|"\r\n]/g, "-")
+    .replace(/["\r\n]/g, "-") // allow | for barcode payloads
     .replace(/[^\x20-\x7E]/g, "")
     .trim();
 }
