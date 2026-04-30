@@ -373,7 +373,7 @@ function copiesOf(label) {
 }
 
 function getLabelSize(label) {
-  if (label.kind === "sku") return "LARGE_2X1";
+  if (label.kind === "sku" || label.kind === "component") return "LARGE_2X1";
   return "SMALL_1X0_5";
 }
 
@@ -505,20 +505,20 @@ class TscLabelBuilder {
     if (label.kind === "component") {
       const componentText = truncateText(
         withPrefix(label.componentCode, "C"),
-        18,
+        28,
       );
 
       const serialText = label.serialNumber
-        ? truncateText(withPrefix(label.serialNumber, "U"), 18)
+        ? truncateText(withPrefix(label.serialNumber, "U"), 28)
         : null;
 
-      this.text(4, 2, "1", componentText);
+      this.text(12, 8, "3", componentText);
 
       if (serialText) {
-        this.text(4, 16, "1", serialText);
-        this.code128(4, 36, 48, payload, { narrow: 1, wide: 2 });
+        this.text(12, 42, "2", serialText);
+        this.code128(12, 76, 88, payload, { narrow: 2, wide: 4 });
       } else {
-        this.code128(4, 28, 56, payload, { narrow: 1, wide: 2 });
+        this.code128(12, 62, 104, payload, { narrow: 3, wide: 6 });
       }
     }
 
